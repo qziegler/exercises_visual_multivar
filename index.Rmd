@@ -1,0 +1,176 @@
+<br> 
+<center><img src="http://i.imgur.com/sSaOozN.png" width="500"></center>
+
+## Visual Analytics Exercises
+### Multivariate Case
+
+### Produced by Quinn Ziegler
+
+
+
+
+_____
+
+```{r}
+library(openxlsx)
+library(ggplot2)
+library(psych)
+library(ggrepel)
+library(cluster)
+library(dotwhisker)
+library(broom)
+library(dplyr)
+library(margins)
+
+set.seed(123)
+```
+
+<span style="color:red"> Exercise:<br> Improve and or complete one descriptive and one inferential plot from this session.
+</span>
+
+
+## Exercise 1: Descriptive plot
+```{r, eval=TRUE}
+link="https://github.com/EvansDataScience/data/raw/master/safeCitiesIndexAll.xlsx"
+
+safe=read.xlsx(link)
+```
+
+```{r, eval=TRUE}
+# IN/OUT
+positionsIN=grep("_In_", colnames(safe) )
+positionsOUT=grep("_Out_", colnames(safe) )
+
+#
+safeIN=safe[,c(1,positionsIN)]
+safeOUT=safe[,c(1,positionsOUT)]
+```
+
+```{r, eval=TRUE}
+### IN
+resultIN=principal(safeIN[,-1],
+                   nfactors = 1,
+                   scores=T,
+                   normalize=T)
+
+safeIN$indexSafeIN=as.vector(factor.scores(safeIN[,-1],resultIN)$scores)
+safeIN$indexSafeIN=scales::rescale(safeIN$indexSafeIN, 
+                                   to = c(1, 100)) 
+safeIN$RankSafeIN=rank(-safeIN$indexSafeIN)
+
+### OUT
+resultOUT=principal(safeOUT[,-1],
+                    nfactors = 1,
+                    scores=T,
+                    normalize=T)
+
+safeOUT$indexSafeOUT=as.vector(factor.scores(safeOUT[,-1],resultOUT)$scores)
+safeOUT$indexSafeOUT=scales::rescale(safeOUT$indexSafeOUT, 
+                                     to = c(1, 100)) 
+safeOUT$RankSafeOUT=rank(-safeOUT$indexSafeOUT)
+```
+
+```{r, eval=TRUE}
+safeIO=merge(safeIN,safeOUT)
+```
+
+```{r, eval=TRUE}
+# computing clusters
+result <- kmeans(safeIO[,-c(1,25,26,53,54)], # not using composites just created
+                 centers = 3) # how many clusters
+# adding the cluster
+safeIO$cluster=as.factor(result$cluster)
+```
+
+```{r, eval=TRUE}
+base <- ggplot(safeIO, aes(x= indexSafeIN, y= indexSafeOUT,
+                           label=city,
+                           color = cluster)) # cluster!!
+
+plot1 = base + geom_point(na.rm=TRUE) + geom_text_repel(na.rm=TRUE,size=2) 
+
+```
+
+```{r}
+title = "Countries with similar levels of investment in public safety see similar outcomes."
+source = "Source: NEC 2017 Safe Cities Index"
+
+plot2 = plot1 + labs(title = title,
+                     x = "Safety Investment Index",
+                     y = "Safety Result Index",
+                     caption = source,
+                     color = "Cluster Group (Similar Cities)")
+
+plot3 = plot2 + theme(panel.background = element_rect(fill = "white", color = "grey50"),
+                      plot.title = element_text(size = 11, face = "bold"),
+                      plot.caption = element_text(hjust = 0),
+                      legend.title = element_text(size = 9),
+                      legend.position = "bottom")
+
+plot3
+```
+_____
+
+
+
+
+
+
+## Exercise 2: Inferential plot
+```{r}
+link2="https://github.com/EvansDataScience/data/raw/master/safeCitiesIndex.xlsx"
+
+safe2=read.xlsx(link2)
+```
+
+```{r, eval=TRUE}
+cut=median(safe2$PERSONAL)
+safe2$PERSONAL_bi=ifelse(safe2$PERSONAL>cut,
+                         1,0)
+```
+
+```{r, eval=TRUE}
+logit_PERSONAL = glm(PERSONAL_bi~ .,
+                          data = safe2[,-c(1,5)],
+                          family = "binomial")
+summary(logit_PERSONAL)
+```
+
+```{r, eval=TRUE}
+digi=cplot(logit_PERSONAL, "DIGITAL",draw = F)
+```
+
+```{r}
+base = ggplot(digi, aes(x = xvals)) 
+
+p1 = base +  geom_ribbon(aes(ymin = lower*100, ymax = upper*100, fill = "95% Confidence Interval"), 
+                        lty = 3) + 
+             geom_line(aes(y = yvals*100)) +
+             theme_bw()
+
+p2 = p1 + scale_y_continuous(breaks = c(0,10,20,30,40,50,60,70,80,90,100), limits = c(-10,110),
+                             labels = scales::unit_format(suffix = "%"))
+             
+p3 = p2 + geom_vline(xintercept = 67, lty = 2)
+
+title = "Countries with a digital safety index above 67 have a 50% or greater probability of \nbeing above the median personal safety index value, all else equal."
+
+p4 = p3 + labs(title = title,
+               x = "Digitial Safety Index",
+               y = "Probability Personal Safety Index > Median",
+               caption = "Source: NEC 2017 Safe Cities Index")
+
+p5 = p4 + theme(plot.title = element_text(size = 11, face = "bold"),
+                axis.title = element_text(size = 9),
+                plot.caption = element_text(hjust = 0),
+                panel.grid.minor = element_blank(),
+                legend.title = element_blank(),
+                legend.position = "bottom")
+
+p6 = p5 + annotate("text", x = 73, y = 10,
+                   label = "Digital Index = 67", size = 3.5)
+
+p7 = p6 + scale_fill_manual(values = c("grey90"))
+
+p7
+```
